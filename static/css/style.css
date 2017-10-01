@@ -8,7 +8,8 @@ a {color: #2B00F7;}
 
 /* header and footer areas */
 .menu { margin: 0.6em 0; padding: 0; display: inline-block; }
-.menu li { display: inline-block; 
+.menu li { 
+	display: inline-block; 
 	padding-right: 1.2em;
 }
 .article-meta, .menu a {
@@ -29,7 +30,7 @@ h1.page-title a {
 	/*color: #2B00F7;*/
 	/*border-bottom: 0.1em solid #FE2900;*/
 }
-.menu, .article-meta, footer { text-align: center; }
+.article-meta, footer { text-align: center; }
 .title { font-size: 1em; line-height: 1em;}
 .subtitle { 
 	margin: 0;
@@ -72,3 +73,11 @@ table {
 table thead th { border-bottom: 1px solid #ddd; }
 th, td { padding: 5px; }
 thead, tfoot, tr:nth-child(even) { background: #eee }
+
+pre {
+    border: 1px solid #ddd;
+    box-shadow: 5px 5px 5px #eee;
+ 	background: #f8f8f8;
+    padding: 1em;
+    overflow-x: auto;
+  }

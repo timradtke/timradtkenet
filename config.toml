@@ -23,17 +23,21 @@ enableEmoji = true
     url = "/about/"
     weight = 2
 [[menu.main]]
-    name = "Categories"
-    url = "/categories/"
+    name = "Posts"
+    url = "/post/"
     weight = 3
 [[menu.main]]
-    name = "Tags"
-    url = "/tags/"
+    name = "Notes"
+    url = "/note/"
     weight = 4
 [[menu.main]]
-    name = "Subscribe"
+    name = "Categories"
+    url = "/categories/"
+    weight = 5
+[[menu.main]]
+    name = "RSS"
     url = "/index.xml"
 
 [params]
-    description = "Minimize Regret is a blog written by Tim Radtke."
-    footer = "&copy; Tim Radtke 2017 | [Github](https://github.com/timradtke) | [Twitter](https://twitter.com/timradtke)"
+    description = "Minimize Regret is a blog written by Tim Radtke about data science and machine learning."
+    footer = "&copy; Tim Radtke 2017 | [Github](https://www.github.com/timradtke) | [Twitter](https://www.twitter.com/timradtke)"

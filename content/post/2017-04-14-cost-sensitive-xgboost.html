@@ -1,0 +1,119 @@
+---
+title: Cost Sensitive Learning with XGBoost
+author: Tim Radtke
+date: '2017-04-14'
+slug: cost-sensitive-xgboost
+categories:
+  - Machine Learning
+tags:
+  - XGBoost
+  - Cost-Sensitive
+---
+
+
+
+<p>In a course at university, the professor proposed a challenge: Given customer data from an ecommerce company, we were tasked to predict which customers would return for another purchase on their own (and should not be incentivized additionally through a coupon). This binary prediction problem was posed with an asymmetric cost matrix, the argument being that false negatives are more costly than false positives.</p>
+<p>Here, a false negative implies that the company sends a coupon to someone who would have returned anyway. Thus, he would be given a discount for no reason leading to a loss of €10. On the other hand, whenever the company sends a coupon to someone who is not returning on his own, the customer will now return with a probability of 0.2 and place an order of an average value of €25. Thus, the expected value from sending a coupon to a non-returning customer is €3. This gives the profit for true negatives.</p>
+<p>The setting described above differs from the traditional case in which both false positives and false negatives lead to a cost of 1, while the cost of correct predictions is zero. In this business context, however, it is important to take the costs of the business into account, so that not some error rate, but the actual profits are optimized. This is what is called cost-sensitive learning.</p>
+<p>A good introduction to cost-sensitive learning is given in <a href="http://cseweb.ucsd.edu/~elkan/rescale.pdf">Elkan (2001)</a>. Most supervised algorithms return some kind of posterior probability <span class="math inline">\(p=P(Y=1|X=x)\)</span>. In the standard case of symmetric costs, this probability is turned into binary predictions using <span class="math inline">\(\hat{Y}=1 \quad \text{if}\quad p &gt;= 0.5\)</span>, that is, if <span class="math inline">\(Y=1\)</span> is more likely than <span class="math inline">\(Y=0\)</span>, then predict 1. The catch with cost sensitive learning is that the threshold of 0.5 might no longer be optimal. Instead, if false negatives are more costly than false positives, we might want to lower this threshold so that we predict <span class="math inline">\(Y=1\)</span> already when <span class="math inline">\(P(Y=1|X=x)=0.25\)</span>, for example.</p>
+<p>Thus, there are two things we’d like to do with our supervised learning algorithms:</p>
+<ol style="list-style-type: decimal">
+<li>Instead of using, for example, the error rate as evaluation metric to compare models, we want to use a metric that takes the asymmetric costs into account</li>
+<li>Find the optimal threshold that transforms the posterior probabilities into binary predictions given the cost matrix</li>
+</ol>
+<div id="cost-sensitive-evaluation-metric" class="section level2">
+<h2>Cost Sensitive Evaluation Metric</h2>
+<p>One of the many advantages of the gradient boosting implementation in XGBoost is the possibility of using a custom evaluation metric during model training. That’s helpful because we might want to use the evaluation metric not only <em>after</em> training to compare different trained models, but also <em>while</em> training for early stopping (so that we don’t have to train the full <code>nrounds</code> if the performance on the test set does not improve).</p>
+<p>Now, given the costs described above, it is straightforward to define a profit function (in contrast to a cost function) that takes the asymmetric costs into account. This is implemented in the function <code>getProfit()</code> below. However, given a smaller share of returning customers in the data set (about 20% of the observations), models that are not tuned to the costs would often predict all observations to be non returning in an effort to optimize the misclassification rate (then being around 0.2).</p>
+<p>In our case, the result of predicting non-returning for every customer would actually be the action of a manager who sends coupons to every customer in his database given no support through a model. Thus, it is interesting to not consider the absolute profit (which is also difficult when comparing training sets of different sizes), but the increase in profit in comparison to the naive solution of sending coupons to everyone (predicting 0 for everyone). This is what the two functions <code>getBenchmarkProfit()</code> and <code>getLift()</code> implement.</p>
+<pre class="r"><code># Revenue function given expected revenue of 3 for true negatives,
+# and -10 for false negatives. Revenue/cost of 0 for true and false positives.
+getProfit &lt;- function(obs, pred, threshold = 0.23) {
+  prob &lt;- pred
+  pred &lt;- ifelse(pred &gt;= threshold, 1, 0)
+  tp_count &lt;- sum(obs == 1 &amp; obs == pred)
+  tn_count &lt;- sum(obs == 0 &amp; obs == pred)
+  fp_count &lt;- sum(obs == 0 &amp; obs != pred)
+  fn_count &lt;- sum(obs == 1 &amp; obs != pred)
+  profit &lt;- tn_count * 3 - fn_count * 10
+  
+  return(profit)
+}
+
+# get profit if we would predict every observation as &quot;non-returning&quot;
+getBenchmarkProfit &lt;- function(obs) { # predict non-returning for everyone
+  n &lt;- length(obs)
+  getProfit(obs, rep(0, times = n))
+}
+
+# get the lift of our predictions over the benchmark profit;
+# defined as getProfit/getBenchmarkProfit
+getLift &lt;- function(probs, labels, thresh) {
+  pred_profit &lt;- as.numeric(getProfit(obs = labels,
+                                      pred = probs,
+                                      threshold = thresh))
+  naive_profit &lt;- as.numeric(getBenchmarkProfit(labels))
+  profit_lift &lt;- pred_profit/naive_profit
+  return(profit_lift)
+}</code></pre>
+<p>So far so good. But if you have paid attention, you’ll have noticed that one still needs to provide a threshold to the <code>getLift()</code> function. The threshold is used to take the probabilities returned by XGBoost and to turn them into the binary predictions. Elkan (2001) provides descriptions on what the optimal theoretical threshold is given the cost matrix. But thanks to our new <code>profitLift()</code> function, we can also use cross validation to compare the profits that we get using different thresholds.</p>
+</div>
+<div id="optimal-threshold-through-cross-validation" class="section level2">
+<h2>Optimal Threshold through Cross Validation</h2>
+<p>Performing proper optimization of the threshold by treating it as a hyperparameter which is tuned in nested cross validation can become a computationally expensive calculation. After all, XGBoost already has a large number of paramaters that want to be tuned.</p>
+<p>A simpler way would be to train the model using one threshold, and choosing the optimal threshold only afterwards by applying all of them on the returned probabilities. But then the performance might be biased towards the threshold used in training, as for example the optimal number of rounds was determined using it.</p>
+<p>Here, we consider a simple case where we fix all paramaters in our XGBoost model and only perform cross validation on the thresholds. This is easily done using the <code>xgb.cv()</code> function in the <code>xgboost</code> package. Additionally, we pass a set of parameters, <code>xgb_params</code>, as well as our evaluation metric to <code>xgb.cv()</code>. Notice that it’s necessary to wrap the function we had defined before into the standardized wrapper accepted by <code>xgb.cv()</code> as an argument: <code>xgb.getLift()</code>. Also important: Set <code>maximize = TRUE</code>, since we want to maximize our profits. We then perform 5-fold cross validation for each threshold between 0.1 and 0.6 (leaving out some thresholds as they are irrelevant).</p>
+<pre class="r"><code>library(xgboost)
+
+# train features contains the training data, train_label the dependent
+# variable; test features contains the test data, test_label the dependent
+# variable of the test set.
+dtrain &lt;- xgb.DMatrix(as.matrix(train_features), label = train_label)
+dtest &lt;- xgb.DMatrix(as.matrix(test_features), label = test_label)
+
+xgb_params &lt;- list(objective = &quot;binary:logistic&quot;,
+                   eta = 0.03,
+                   max_depth = 4,
+                   colsample_bytree = 1,
+                   subsample = 0.75,
+                   min_child_weight = 1)
+
+thresholds &lt;- seq(0.1, 0.69, by = 0.01)
+performance &lt;- vector(length = 60)
+
+for(i in 1:9) {
+  # define the function every iteration to use a new threshold
+  xgb.getLift &lt;- function(preds, dtrain) {
+    labels &lt;- getinfo(dtrain, &quot;label&quot;)
+    lift &lt;- getLift(preds, labels, thresholds[i])
+    return(list(metric = &quot;Lift&quot;, value = lift))
+  }
+  
+  set.seed(512)
+  # train the model again using the current iteration&#39;s threshold 
+  xgb_fit &lt;- xgb.cv(params = xgb_params, data = dtrain, nfold = 5,
+                    feval = xgb.getLift, maximize = TRUE, 
+                    nrounds = 250, early_stopping_rounds = 50,
+                    verbose = TRUE, print_every_n = 100)
+  
+  # store the results
+  performance[i] &lt;- as.data.frame(xgb_fit$evaluation_log)[
+    xgb_fit$best_iteration,4]
+}
+
+# print the optimal threshold
+thresholds[which.max(performance)]</code></pre>
+<p>Given the results of the cross validation, we can plot the value of the <code>profitLift()</code> function against the threshold to see which threshold has lead to the optimal profit.</p>
+<pre class="r"><code># plot the evaluation metric against the thresholds
+performance_df &lt;- data.frame(threshold = thresholds,
+                             performance = performance)
+ggplot(performance_df, aes(x = threshold, y = performance)) +
+  geom_line() +
+  labs(title = &quot;Profit lift over naive predictions using XGBoost&quot;,
+          x = &quot;Threshold&quot;, y = &quot;Lift over naive profit&quot;)</code></pre>
+<div class="figure">
+<img src="/post/2017-04-14-cost-sensitive-xgboost/profit_lift_graph.png" />
+
+</div>
+<p>The plot shows clearly that for the standard threshold of 0.5 the XGBoost model would predict nearly every observation as non returning and would thus lead to profits that can be achieved without any model. However, by using the custom evaluation metric, we achieve a 50% increase in profits in this example as we move the optimal threshold to 0.23.</p>
+</div>
