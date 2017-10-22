@@ -1,0 +1,133 @@
+---
+title: Detection of Abnormal Zero-Sequences in Count Time Series
+author: Tim Radtke
+date: '2017-10-22'
+slug: detection-abnormal-zero-sequences-count-time-series
+categories:
+  - Statistics
+tags:
+  - time series
+  - Application
+---
+
+
+
+<p><em>This post introduces a simple method to detect out-of-stock periods in sales time series by computing the probability of such sequences in Poisson random samples.</em></p>
+<p>I recently forecasted sales of hundreds of different products. In contrast to other kinds of time series, sales might move close to zero for any given product if the product isn’t purchased daily. As a result, products have non-negative time series that regularly feature observations with zero sales. This is not a problem in and of itself (e.g., assume a Poisson or Negative Binomial instead of a Normal distribution). It does become a problem, however, when paired with abnormal sequences of zero sales because the product ran out of stock. Fitting a model to data with an inflated number of zeros would introduce a (downward) bias.</p>
+<div class="figure"><span id="fig:unnamed-chunk-1"></span>
+<img src="/post/2017-10-22-identifying-abnormal-zero-sequences-in-count-time-series_files/figure-html/unnamed-chunk-1-1.png" alt="Actual demand in grey, observed demand in black. If we try to estimate the true mean by the sample mean of the observed demand, the out-of-stock period around October 30 introduces a negative bias. Observations sampled from a Poisson distribution with mean equal to 5." width="672" />
+<p class="caption">
+Figure 1: Actual demand in grey, observed demand in black. If we try to estimate the true mean by the sample mean of the observed demand, the out-of-stock period around October 30 introduces a negative bias. Observations sampled from a Poisson distribution with mean equal to 5.
+</p>
+</div>
+<div id="when-products-run-out-of-stock" class="section level2">
+<h2>When Products Run Out of Stock</h2>
+<p>The entire point of forecasting sales is to replenish products in time to keep enough stock available in the warehouse to fulfill customers’ demand. If demand is higher than anticipated a product might run out of stock. Taking out-of-stock events into account when forecasting is motivated in Figure 1, and would be aided by historical information about periods where no stock was available.</p>
+<p>If out-of-stock observations have not flagged in the past, they jump out as long sequences of zero sales; sequences longer than what one could expect given the observed demand at other times. This is shown in Figure 1. If no ground truth about out-of-stock events is available, one has to detect and flag out-of-stock periods for every product before forecasting to prevent obvious bias.</p>
+<p>This would be a simple task if sales were strictly positive at all other times: Simply flag all zeros as out-of-stock events. But as introduced above, sales frequently are zero because there <em>truly</em> was no demand for a product on a given day. So this would introduce unnecessary <code>NA</code>s.</p>
+<p>It is actually simple to see out-of-stock periods when visualizing sales of a product in a graph-especially when surrounding sales were high (see Figure 1). But manually identifying out-of-stock events becomes infeasible when the number of products ranges in the hundreds to thousands.</p>
+</div>
+<div id="poisson-distribution-based-sequence-detection" class="section level2">
+<h2>Poisson Distribution-based Sequence Detection</h2>
+<p>Instead of trying to flag out-of-stock periods by hand, one can try the following simple procedure. Given that the observations are count data, I assume the data is a sample of length <span class="math inline">\(T\)</span> from an i.i.d. <a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a> <span class="math inline">\(Pois(\lambda)\)</span>. The i.i.d. assumption is of course almost surely flawed given the time series characteristic (autocorrelation!), but it makes things very simple. Then, for any given product, I fit a Poisson distribution using the sample mean <span class="math inline">\(\bar{x}\)</span> as estimate of the parameter <span class="math inline">\(\lambda\)</span>: That is, we parameterize the distribution by <span class="math inline">\(\hat{\lambda} = \bar{x}\)</span>. Assuming the sample comes from a <span class="math inline">\(Pois(\hat{\lambda})\)</span> distribution, I can then compute the probability of the zero sequences.</p>
+<p>To compute the probability of a <em>sequence</em> of zeros of length <span class="math inline">\(k\)</span> or longer appearing in a sequence of <span class="math inline">\(T\)</span> observations distributed by <span class="math inline">\(Pois(\hat{\lambda})\)</span> (in contrast to just <span class="math inline">\(k\)</span> zeros “somewhere” in a sample of size <span class="math inline">\(T\)</span>), I generate, e.g., 10000 random samples of length <span class="math inline">\(T\)</span>. To get the probability of a zero sequence of length <span class="math inline">\(k\)</span> or longer within a Poisson sample of length <span class="math inline">\(T\)</span>, I compute the share of simulated sequences in which such a zero sequence appears.</p>
+<p>Given some threshold, the zero sequence is then flagged as anomaly if its probability is below the threshold. In this case, the observations are set to <code>NA</code> and could in the following be interpolated, for example.</p>
+</div>
+<div id="code" class="section level2">
+<h2>Code</h2>
+<p>In the case of the sequence above, one can implement the idea as follows. First I generate the observations which could for example be three weeks of observations with one week of out-of-stock observations.</p>
+<pre class="r"><code>set.seed(512)
+zero_inflated &lt;- rpois(21,5)
+zero_inflated[8:15] &lt;- 0</code></pre>
+<p>I then compute the length of every zero sequence in the data using <code>rle()</code>, and generate 10000 Poisson samples.</p>
+<pre class="r"><code>rles &lt;- rle(zero_inflated)
+(zero_lengths &lt;- rles$lengths[rles$values == 0])</code></pre>
+<pre><code>## [1] 8</code></pre>
+<pre class="r"><code>pois_samples &lt;- matrix(rpois(10000*length(zero_inflated),
+                             mean(zero_inflated)), 
+                       nrow = length(zero_inflated), 
+                       ncol = 10000, byrow = FALSE)</code></pre>
+<p>Next, I compute for each of the 10000 samples the length of all zero sequences appearing in them. The second sample contains two “sequences” of length 1.</p>
+<pre class="r"><code>iid_zero_seq_lengths &lt;- apply(pois_samples, 2, function(x) {
+  y &lt;- rle(x)
+  y$lengths[y$values == 0]
+})
+
+iid_zero_seq_lengths[[2]]</code></pre>
+<pre><code>## [1] 1 1</code></pre>
+<p>To compute the probability of a zero sequence of length 7 or longer appearing in a sample, I compute the share of the random samples for which the maximum length of a zero sequence is longer or equal than 7. <code>lapply()</code> loops through the 10000 samples and returns for each a logical.</p>
+<pre class="r"><code>share_with_seqs &lt;- mean(unlist(lapply(iid_zero_seq_lengths,
+                    function(x) ifelse(length(x) &gt; 0, max(x), 0) &gt;= 7)))
+share_with_seqs</code></pre>
+<pre><code>## [1] 0</code></pre>
+<p>Here, no sample contains a sequence as long as the one in the original sample, <code>zero_inflated</code>, so we estimate the probability to be zero. Based on this, the probability will be smaller than any threshold, and we would set the observations of this sequence to zero.</p>
+<hr />
+<p>In the above example, we could leave one loop out as the sample contained only one zero sequence. When the observed series contains more zero sequences, we would have to get the probability for each of the different lengths. The following function does exactly that, as well as remove the corresponding observations.</p>
+<pre class="r"><code>get_zero_seq_lengths &lt;- function(x) {
+  # Get the length of zero sequences in the input vector
+  # https://stackoverflow.com/questions/1502910/how-can-i-count-runs-in-a-sequence
+  y &lt;- rle(x)
+  y$lengths[y$values == 0]
+}
+
+rm_abnormal_zero_seq &lt;- function(x, thresh = 0.001, 
+                                 n = 10000, seed = NA) {
+  if(!is.na(seed)) set.seed(seed)
+  newx &lt;- x
+  meanx &lt;- mean(x, na.rm = TRUE)
+  rles &lt;- rle(x)
+  zero_seq_lengths &lt;- get_zero_seq_lengths(x)
+  
+  # given a list of vectors (iid_zero_seq_lengths), 
+  # get for each of the vectors whether the maximum 
+  # value in that vector is larger than a given integer
+  int_in_listvec &lt;- function(int, listvec) {
+    lapply(listvec, function(x) ifelse(length(x) &gt; 0,
+                                       max(x), 0) &gt;= int)
+  }
+  
+  # if there are no 0 observations, jump to the end and return newx
+  if(length(zero_seq_lengths) &gt; 0) {
+    # based on sample mean, get n iid Poisson samples of same length as 
+    # input time series
+    pois_samples &lt;- matrix(rpois(n*length(x), meanx), 
+                           nrow = length(x), ncol = n, 
+                           byrow = FALSE)
+    
+    # now for each of the n samples, 
+    # get the lengths of all zero sequences (outputs a list)
+    iid_zero_seq_lengths &lt;- apply(pois_samples, 2,
+                                  get_zero_seq_lengths)
+    
+    if(length(iid_zero_seq_lengths) == 0) {# if not a single 0 in random samples
+      zero_seq_probs &lt;- rep(0, times = length(zero_seq_lengths))
+    } else { # if there are 0s in the random samples
+      zero_seq_probs &lt;- lapply(zero_seq_lengths,
+                               function(x) {
+                                 mean(unlist(int_in_listvec(x, iid_zero_seq_lengths)))
+                                 })
+    }
+    
+    # in the original time series, get indices at which zero
+    # sequences that are unlikely given `thresh` start
+    seq_start_idx &lt;- (cumsum(rles$lengths) - rles$lengths+1)[rles$values==0][
+      zero_seq_probs &lt; thresh]
+    seq_end_idx &lt;- seq_start_idx + zero_seq_lengths[
+      zero_seq_probs &lt; thresh] - 1
+    
+    # fill in NAs if at least 1 unlikely sequence
+    if(length(seq_start_idx) &gt; 0) {
+      for(i in 1:length(seq_start_idx)) 
+        newx[seq_start_idx[i]:seq_end_idx[i]] &lt;- NA
+    }
+  }
+  return(newx)
+}</code></pre>
+<pre class="r"><code>rm_abnormal_zero_seq(zero_inflated)</code></pre>
+<pre><code>##  [1]  4  3  5  9  6  3 10 NA NA NA NA NA NA NA NA  4  3  4  8  7  6</code></pre>
+</div>
+<div id="conclusion-and-potential-extensions" class="section level2">
+<h2>Conclusion and Potential Extensions</h2>
+<p>The advantage of the comparison of the original series against Poisson samples is that–depending on the other observations in the sample–short zero sequences of length one or two or three will not be flagged as abnormal. This is a big advantage against some rule-based approach that would simply remove all zeros.</p>
+<p>To adjust the procedure more to the time series nature, one could fit an auto-regressive model instead of the naive Poisson distribution, to generate the random samples. This would allow zero sequences that are long in nature (if demand is low in waves).</p>
+</div>

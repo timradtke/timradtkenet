@@ -1,0 +1,265 @@
+---
+title: Detection of Abnormal Zero-Sequences in Count Time Series
+author: Tim Radtke
+date: '2017-10-22'
+slug: detection-abnormal-zero-sequences-count-time-series
+categories:
+  - Statistics
+tags:
+  - time series
+  - Application
+---
+
+*This post introduces a simple method to detect out-of-stock periods in sales time series by computing the probability of such sequences in Poisson random samples.*
+
+I recently forecasted sales of hundreds of different products. In contrast to other kinds of time series, sales might move close to zero for any given product if the product isn't purchased daily. As a result, products have non-negative time series that regularly feature observations with zero sales. This is not a problem in and of itself (e.g., assume a Poisson or Negative Binomial instead of a Normal distribution). It does become a problem, however, when paired with abnormal sequences of zero sales because the product ran out of stock. Fitting a model to data with an inflated number of zeros would introduce a (downward) bias. 
+
+```{r, echo = FALSE, message = FALSE, fig.height = 3, fig.cap="Actual demand in grey, observed demand in black. If we try to estimate the true mean by the sample mean of the observed demand, the out-of-stock period around October 30 introduces a negative bias. Observations sampled from a Poisson distribution with mean equal to 5."}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+set.seed(512)
+actual <- rpois(21,5)
+zero_inflated <- actual
+zero_inflated[8:15] <- 0
+date <- seq(from = as.Date("2017-10-22"), along.with = zero_inflated, by = 1)
+
+df <- data.frame(actual = actual, oos = zero_inflated,
+                 date = date)
+df <- gather(df, type, sales, -date)
+df_fit <- data.frame(date = date, actual_fit = mean(actual),
+                     oos_fit = mean(zero_inflated))
+df_fit <- gather(df_fit, model, sales, -date)
+
+ggplot() +
+  geom_point(aes(x = date, y = sales), alpha = 0.5,
+            data = filter(df, type == "actual")) +
+  geom_line(aes(x = date, y = sales),
+            data = filter(df, type == "oos")) +
+  geom_point(aes(x = date, y = sales), alpha = 1,
+            data = filter(df, type == "oos")) +
+  geom_line(aes(x = date, y = sales), alpha = 0.5,
+            data = filter(df_fit, model == "actual_fit")) +
+  geom_line(aes(x = date, y = sales), alpha = 1,
+            data = filter(df_fit, model == "oos_fit")) +
+  labs(x = "Day", y = "Sales") + theme_bw() +
+  coord_fixed(ratio = 11/12)
+
+```
+
+## When Products Run Out of Stock
+
+The entire point of forecasting sales is to replenish products in time to keep enough stock available in the warehouse to fulfill customers' demand. If demand is higher than anticipated a product might run out of stock. Taking out-of-stock events into account when forecasting is motivated in Figure 1, and would be aided by historical information about periods where no stock was available.
+
+If out-of-stock observations have not flagged in the past, they jump out as long sequences of zero sales; sequences longer than what one could expect given the observed demand at other times. This is shown in Figure 1. If no ground truth about out-of-stock events is available, one has to detect and flag out-of-stock periods for every product before forecasting to prevent obvious bias.
+
+This would be a simple task if sales were strictly positive at all other times: Simply flag all zeros as out-of-stock events. But as introduced above, sales frequently are zero because there *truly* was no demand for a product on a given day. So this would introduce unnecessary `NA`s.
+
+It is actually simple to see out-of-stock periods when visualizing sales of a product in a graph-especially when surrounding sales were high (see Figure 1). But manually identifying out-of-stock events becomes infeasible when the number of products ranges in the hundreds to thousands.
+
+## Poisson Distribution-based Sequence Detection
+
+Instead of trying to flag out-of-stock periods by hand, one can try the following simple procedure. Given that the observations are count data, I assume the data is a sample of length $T$ from an i.i.d. [Poisson distribution](https://en.wikipedia.org/wiki/Poisson_distribution) $Pois(\lambda)$. The i.i.d. assumption is of course almost surely flawed given the time series characteristic (autocorrelation!), but it makes things very simple. Then, for any given product, I fit a Poisson distribution using the sample mean $\bar{x}$ as estimate of the parameter $\lambda$: That is, we parameterize the distribution by $\hat{\lambda} = \bar{x}$. Assuming the sample comes from a $Pois(\hat{\lambda})$ distribution, I can then compute the probability of the zero sequences. 
+
+To compute the probability of a *sequence* of zeros of length $k$ or longer appearing in a sequence of $T$ observations distributed by $Pois(\hat{\lambda})$ (in contrast to just $k$ zeros "somewhere" in a sample of size $T$), I generate, e.g., 10000 random samples of length $T$. To get the probability of a zero sequence of length $k$ or longer within a Poisson sample of length $T$, I compute the share of simulated sequences in which such a zero sequence appears.
+
+Given some threshold, the zero sequence is then flagged as anomaly if its probability is below the threshold. In this case, the observations are set to `NA` and could in the following be interpolated, for example.
+
+## Code
+
+In the case of the sequence above, one can implement the idea as follows. First I generate the observations which could for example be three weeks of observations with one week of out-of-stock observations.
+
+```{r}
+set.seed(512)
+zero_inflated <- rpois(21,5)
+zero_inflated[8:15] <- 0
+```
+
+I then compute the length of every zero sequence in the data using `rle()`, and generate 10000 Poisson samples.
+
+```{r}
+rles <- rle(zero_inflated)
+(zero_lengths <- rles$lengths[rles$values == 0])
+
+pois_samples <- matrix(rpois(10000*length(zero_inflated),
+                             mean(zero_inflated)), 
+                       nrow = length(zero_inflated), 
+                       ncol = 10000, byrow = FALSE)
+```
+
+Next, I compute for each of the 10000 samples the length of all zero sequences appearing in them. The second sample contains two "sequences" of length 1.
+
+```{r}
+iid_zero_seq_lengths <- apply(pois_samples, 2, function(x) {
+  y <- rle(x)
+  y$lengths[y$values == 0]
+})
+
+iid_zero_seq_lengths[[2]]
+```
+
+To compute the probability of a zero sequence of length 7 or longer appearing in a sample, I compute the share of the random samples for which the maximum length of a zero sequence is longer or equal than 7. `lapply()` loops through the 10000 samples and returns for each a logical.
+
+```{r}
+share_with_seqs <- mean(unlist(lapply(iid_zero_seq_lengths,
+                    function(x) ifelse(length(x) > 0, max(x), 0) >= 7)))
+share_with_seqs
+```
+
+Here, no sample contains a sequence as long as the one in the original sample, `zero_inflated`, so we estimate the probability to be zero. Based on this, the probability will be smaller than any threshold, and we would set the observations of this sequence to zero.
+
+***
+
+In the above example, we could leave one loop out as the sample contained only one zero sequence. When the observed series contains more zero sequences, we would have to get the probability for each of the different lengths. The following function does exactly that, as well as remove the corresponding observations. 
+
+```{r, include = FALSE, echo = FALSE, eval = FALSE}
+get_zero_seq_lengths <- function(x) {
+  # Get the length of zero sequences in the input vector
+  # https://stackoverflow.com/questions/1502910/how-can-i-count-runs-in-a-sequence
+  y <- rle(x)
+  y$lengths[y$values == 0]
+}
+
+rm_abnormal_zero_seq <- function(x, thresh = 0.001, 
+                                 n = 10000, seed = NA) {
+  if(!is.na(seed)) set.seed(seed)
+  newx <- x
+  meanx <- mean(x, na.rm = TRUE)
+  rles <- rle(x)
+  zero_seq_lengths <- get_zero_seq_lengths(x)
+  
+  # if there are no 0 observations, jump to the end and return newx
+  if(length(zero_seq_lengths) > 0) {
+    # based on sample mean, get n iid Poisson samples of same length as 
+    # input time series
+    pois_samples <- matrix(rpois(n*length(x), meanx), 
+                           nrow = length(x), ncol = n, byrow = FALSE)
+    
+    # now for each of the n samples, get the lengths of all zero sequences
+    iid_zero_seq_lengths <- apply(pois_samples, 2, get_zero_seq_lengths) # a list
+    
+    
+    if(length(iid_zero_seq_lengths) == 0) {# if not a single 0 in random samples
+      zero_seq_probs <- rep(0, times = length(zero_seq_lengths))
+    } else { # if there are 0s in the random samples
+      # given a list of vectors (iid_zero_seq_lengths), 
+      # get for each of the vectors whether the maximum 
+      # value in that vector is larger than a given integer
+      int_in_listvec <- function(int, listvec) {
+        lapply(listvec, function(x) ifelse(length(x) > 0,
+                                           max(x), 0) >= int)
+      }
+      
+      zero_seq_probs <- vector(length = length(zero_seq_lengths))
+      # for each of the zero sequences in input x
+      for (i in 1:length(zero_seq_lengths)) {
+        # get the rate at which zero sequences at least as long as 
+        # zero_seq_lengths[i] appear in the rpois()-based random samples
+        zero_seq_probs[i] <- mean(unlist(int_in_listvec(zero_seq_lengths[i],
+                                                        iid_zero_seq_lengths)))
+      }
+    }
+    
+    # in the original time series, get indices at which zero
+    # sequences that are unlikely given `thresh` start
+    seq_start_idx <- (cumsum(rles$lengths) - rles$lengths+1)[rles$values==0][
+      zero_seq_probs < thresh]
+    seq_end_idx <- seq_start_idx + zero_seq_lengths[
+      zero_seq_probs < thresh] - 1
+    
+    # fill in NAs if at least 1 unlikely sequence
+    if(length(seq_start_idx) > 0) {
+      for(i in 1:length(seq_start_idx)) 
+        newx[seq_start_idx[i]:seq_end_idx[i]] <- NA
+    }
+  }
+  
+  return(newx)
+}
+```
+
+```{r}
+get_zero_seq_lengths <- function(x) {
+  # Get the length of zero sequences in the input vector
+  # https://stackoverflow.com/questions/1502910/how-can-i-count-runs-in-a-sequence
+  y <- rle(x)
+  y$lengths[y$values == 0]
+}
+
+rm_abnormal_zero_seq <- function(x, thresh = 0.001, 
+                                 n = 10000, seed = NA) {
+  if(!is.na(seed)) set.seed(seed)
+  newx <- x
+  meanx <- mean(x, na.rm = TRUE)
+  rles <- rle(x)
+  zero_seq_lengths <- get_zero_seq_lengths(x)
+  
+  # given a list of vectors (iid_zero_seq_lengths), 
+  # get for each of the vectors whether the maximum 
+  # value in that vector is larger than a given integer
+  int_in_listvec <- function(int, listvec) {
+    lapply(listvec, function(x) ifelse(length(x) > 0,
+                                       max(x), 0) >= int)
+  }
+  
+  # if there are no 0 observations, jump to the end and return newx
+  if(length(zero_seq_lengths) > 0) {
+    # based on sample mean, get n iid Poisson samples of same length as 
+    # input time series
+    pois_samples <- matrix(rpois(n*length(x), meanx), 
+                           nrow = length(x), ncol = n, 
+                           byrow = FALSE)
+    
+    # now for each of the n samples, 
+    # get the lengths of all zero sequences (outputs a list)
+    iid_zero_seq_lengths <- apply(pois_samples, 2,
+                                  get_zero_seq_lengths)
+    
+    if(length(iid_zero_seq_lengths) == 0) {# if not a single 0 in random samples
+      zero_seq_probs <- rep(0, times = length(zero_seq_lengths))
+    } else { # if there are 0s in the random samples
+      zero_seq_probs <- lapply(zero_seq_lengths,
+                               function(x) {
+                                 mean(unlist(int_in_listvec(x, iid_zero_seq_lengths)))
+                                 })
+    }
+    
+    # in the original time series, get indices at which zero
+    # sequences that are unlikely given `thresh` start
+    seq_start_idx <- (cumsum(rles$lengths) - rles$lengths+1)[rles$values==0][
+      zero_seq_probs < thresh]
+    seq_end_idx <- seq_start_idx + zero_seq_lengths[
+      zero_seq_probs < thresh] - 1
+    
+    # fill in NAs if at least 1 unlikely sequence
+    if(length(seq_start_idx) > 0) {
+      for(i in 1:length(seq_start_idx)) 
+        newx[seq_start_idx[i]:seq_end_idx[i]] <- NA
+    }
+  }
+  return(newx)
+}
+```
+
+```{r}
+rm_abnormal_zero_seq(zero_inflated)
+```
+
+```{r, include = FALSE, eval = FALSE}
+library(ZIM)
+syphi <- syph[,-(1:2)]
+head(syphi)
+
+syphi_zrm <- apply(syphi, 2, rm_abnormal_zero_seq)
+apply(syphi_zrm, 2, function(x) sum(is.na(x)))
+
+plot(ts(syphi_zrm[,15]))
+plot(ts(syphi_zrm[,14]))
+```
+
+## Conclusion and Potential Extensions
+
+The advantage of the comparison of the original series against Poisson samples is that--depending on the other observations in the sample--short zero sequences of length one or two or three will not be flagged as abnormal. This is a big advantage against some rule-based approach that would simply remove all zeros.
+
+To adjust the procedure more to the time series nature, one could fit an auto-regressive model instead of the naive Poisson distribution, to generate the random samples. This would allow zero sequences that are long in nature (if demand is low in waves).
