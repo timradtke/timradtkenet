@@ -31,10 +31,6 @@ enableEmoji = true
     url = "/note/"
     weight = 4
 [[menu.main]]
-    name = "Categories"
-    url = "/categories/"
-    weight = 5
-[[menu.main]]
     name = "RSS"
     url = "/index.xml"
 
