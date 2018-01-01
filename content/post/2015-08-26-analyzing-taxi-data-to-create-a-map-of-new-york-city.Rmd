@@ -83,6 +83,8 @@ Lastly, I adjusted the theme of the plot such that there are neither axes nor le
 
 I'm pleased with the resulting image of New York.
 
+![](unnamed-chunk-13-.gif)
+
 ![](/post/taxi-map-ny.png)
 
 Different from my [first](http://www.timradtke.net/blog/r-code-diary-16-nyc-taxi-trip-record-data) [tries](http://www.timradtke.net/blog/r-code-diary-17) is that not only Manhattan is recognizable, but also the streets in other boroughs, especially Queens and Brooklyn. Likewise, Manhattan is no longer a large glowing spot: the famous grid structure has become visible. I therefore managed to address the most critical features of the map.
