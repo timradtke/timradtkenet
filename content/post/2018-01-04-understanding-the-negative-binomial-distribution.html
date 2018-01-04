@@ -1,0 +1,257 @@
+---
+title: Understanding the Negative Binomial Distribution
+author: Tim Radtke
+date: '2018-01-04'
+slug: understanding-the-negative-binomial-distribution
+categories:
+  - Statistics
+tags:
+  - time series
+  - sales
+---
+
+
+
+<p>If you’ve ever encountered count data, chances are you’re familiar with the <a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a>. The Poisson distribution models the probability with which an event occurs a certain number of times within a fixed time period. For example, count how often a book is sold on Amazon on a given day. Then the Poisson can describe the probability with which the book is sold at least two times. Furthermore, the book might sell 5 times on some days; but it is never sold -3 times or 0.5 times; the Poisson distribution only allocates probability to non-negative integers–count data.</p>
+<p>Consider again the number of times an item is sold on Amazon on a given day. Then a sample of observations over a span of a few days could look like this:</p>
+<p><img src="/post/2018-01-04-understanding-the-negative-binomial-distribution_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p>One of the advantages of the Poisson distribution is that it is defined by a single parameter <span class="math inline">\(\lambda\)</span>. Furthermore, the <a href="https://en.wikipedia.org/wiki/Poisson_distribution#Descriptive_statistics">distribution’s mean equals</a> <span class="math inline">\(\lambda\)</span>, such that <span class="math inline">\(\lambda\)</span> can be estimated by method-of-moments and maximum likelihood alike: Given a sample, our best estimate is the sample mean, such that <span class="math inline">\(\hat{\lambda}=\bar{x}\)</span>. Consequently, we can fit a Poisson to our example data like so (here, we take the high route with the <code>gamlss</code> package):</p>
+<pre class="r"><code>library(broom)
+library(gamlss)
+
+# a complicated way of computing the sample mean:
+pois_fit &lt;- gamlss(sales_only~1, 
+                   family = PO(mu.link = &quot;identity&quot;),
+                   control = gamlss.control(trace = FALSE)) 
+pois_fit_tidy &lt;- tidy(pois_fit)
+round(pois_fit_tidy[,c(3:4,6)],2)</code></pre>
+<pre><code>##   estimate std.error p.value
+## 1     4.36      0.24       0</code></pre>
+<pre class="r"><code># Check whether we indeed estimated the sample mean
+identical(round(pois_fit_tidy$estimate,2),
+          round(mean(sales_only),2))</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<div class="figure"><span id="fig:unnamed-chunk-4"></span>
+<img src="/post/2018-01-04-understanding-the-negative-binomial-distribution_files/figure-html/unnamed-chunk-4-1.png" alt="Comparison of Sample and Theoretical Poisson Distribution." width="672" />
+<p class="caption">
+Figure 1: Comparison of Sample and Theoretical Poisson Distribution.
+</p>
+</div>
+<p>This worked flawlessly. But if we evaluate the fit graphically, it’s a little disappointing. The sample distribution has much more probability in the tails of the distribution. Consequently, if we simulated new data from the fitted distribution, the simulated sample would have the correct mean, but too tight lower and upper quantiles:</p>
+<pre class="r"><code>set.seed(1024)
+summary(product_data$sales)</code></pre>
+<pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   0.000   2.000   4.000   4.364   6.000  14.000</code></pre>
+<pre class="r"><code>pois_sample &lt;- rpois(83, pois_fit_tidy$estimate)
+summary(pois_sample)</code></pre>
+<pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   1.000   3.000   4.000   4.542   6.000  10.000</code></pre>
+<p>What we failed to take into account so far is the variance of our sample: One fundamental assumption of the Poisson distribution is that both mean and variance are equal. Thus, if the random variable <span class="math inline">\(X\)</span> is Poisson distributed with parameter <span class="math inline">\(\lambda\)</span>, <span class="math inline">\(X \sim \text{Pois}(\lambda)\)</span>, then <span class="math inline">\(E[X] = Var[X] = \lambda\)</span>. This is an assumption that holds at best approximately in applications. In the data set we used so far, we actually have a variance that is nearly twice as large as the mean:</p>
+<pre class="r"><code>round(mean(product_data$sales),2)</code></pre>
+<pre><code>## [1] 4.36</code></pre>
+<pre class="r"><code>round(var(product_data$sales),2)</code></pre>
+<pre><code>## [1] 8.44</code></pre>
+<p>This case, where the sample variance is larger than the sample mean, occurs much more frequently. So if we fit a Poisson using the sample mean, we will end up with a fitted distribution whose variance is smaller than the one observed in the data. In the context of Poisson distributions we say that our sample is overdispersed: We expect a sample variance <span class="math inline">\(\hat{\sigma}^2 = \lambda\)</span> but get <span class="math inline">\(\hat{\sigma}^2 &gt; \lambda\)</span>. The sample is more “dispersed” than the fitted distribution.</p>
+<div id="an-alternative-distribution" class="section level2">
+<h2>An Alternative Distribution</h2>
+<p>A distribution for count data that takes overdispersion into account is the Negative Binomial distribution.</p>
+<p>In contrast to the Poisson distribution, the Negative Binomial takes two parameters, and there are many different parameterizations which one can choose from. <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution">On Wikipedia</a> we have a parameterization in terms of <span class="math inline">\(r\)</span> and <span class="math inline">\(p\)</span>:</p>
+<blockquote>
+<p>Suppose there is a sequence of independent Bernoulli trials. Thus, each trial has two potential outcomes called “success” and “failure”. In each trial the probability of success is <span class="math inline">\(p\)</span> and of failure is <span class="math inline">\((1 − p)\)</span>. We are observing this sequence until a predefined number <span class="math inline">\(r\)</span> of failures has occurred. Then the random number of successes we have seen, <span class="math inline">\(X\)</span>, will have the negative binomial distribution:</p>
+</blockquote>
+<p><span class="math display">\[
+X \sim \text{NB}(r,p)
+\]</span></p>
+<p>Then, the mean is defined as <span class="math inline">\(\mu = E[X] = \frac{pr}{1-p}\)</span>. Using this formulation, <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution#Alternative_formulations">one can write</a> the variance as <span class="math inline">\(\sigma^2 = Var(X) = \frac{pr}{(1-p)^2} = \mu + \frac{\mu^2}{r}\)</span>. This way, it becomes obvious that the variance of a Negative Binomial is larger than that of a Poisson. Given that both distributions have a mean equal to <span class="math inline">\(\lambda\)</span>, the Negative Binomial has an additional variance of <span class="math inline">\(\lambda^2/r\)</span>. The Negative Binomial will always have longer tails. Only in the special case of <span class="math inline">\(r = \infty\)</span>, when the Negative Binomial reduces to the Poisson, the variances will be the same.</p>
+<p>Now, are we able to improve upon our previous fit by using a Negative Binomial? We use the <code>gamlss</code> package as previously and compare the fitted density with our previous results.</p>
+<pre class="r"><code>nbin_fit &lt;- gamlss(sales_only~1, 
+                   family = NBI(mu.link = &quot;identity&quot;,
+                                sigma.link = &quot;identity&quot;))</code></pre>
+<pre class="r"><code>nbin_fit_tidy &lt;- tidy(nbin_fit)
+nbin_fit_tidy[,c(1,3:4,6)] %&gt;%
+  knitr::kable(digits = 2)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">parameter</th>
+<th align="right">estimate</th>
+<th align="right">std.error</th>
+<th align="right">p.value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">mu</td>
+<td align="right">4.36</td>
+<td align="right">0.33</td>
+<td align="right">0.00</td>
+</tr>
+<tr class="even">
+<td align="left">sigma</td>
+<td align="right">0.22</td>
+<td align="right">0.08</td>
+<td align="right">0.01</td>
+</tr>
+</tbody>
+</table>
+<div class="figure"><span id="fig:unnamed-chunk-10"></span>
+<img src="/post/2018-01-04-understanding-the-negative-binomial-distribution_files/figure-html/unnamed-chunk-10-1.png" alt="Comparison of sample distribution with fitted theortical distributions. Even though the distributions are discrete, we use densities to make the comparison easier." width="672" />
+<p class="caption">
+Figure 2: Comparison of sample distribution with fitted theortical distributions. Even though the distributions are discrete, we use densities to make the comparison easier.
+</p>
+</div>
+<pre class="r"><code>AIC(pois_fit)</code></pre>
+<pre><code>## [1] 391.9573</code></pre>
+<pre class="r"><code>AIC(nbin_fit)</code></pre>
+<pre><code>## [1] 373.7867</code></pre>
+<p>The graph shows that using a Negative Binomial instead of a Poisson distribution improves a lot upon the previous fit. The AIC has decreased as well compared to the fit of the Poisson distribution. There is now more probability in the tails and less around 4 to 5. We seem to have successfully taken into account the additional variance in our sample.</p>
+<p>Why does the Negative Binomial take the variance into account differently? Or: Why does the Negative Binomial have a second parameter (while the Poisson has just one)?</p>
+</div>
+<div id="the-negative-binomial-as-poisson-gamma-mixture" class="section level2">
+<h2>The Negative Binomial as Poisson-Gamma-Mixture</h2>
+<p>To answer these questions, and to better understand the Negative Binomial distribution (<a href="https://youtu.be/jTyV-M_AY4M?t=4m27s">Roll Credits!</a>), suppose you have not just one, but a whole bunch of products, <span class="math inline">\(i = 1, ..., N\)</span>. As an example, consider the <code>carparts</code> data set published with “Forecasting with exponential smoothing: the state space approach” by Hyndman, Koehler, Ord and Snyder (Springer, 2008). The data set comes with the <code>expsmooth</code> package in R. It consists of 2674 time series describing monthly sales of different car parts. The majority of the series has 51 observations. We can summarize the complete series quickly:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">n_series</th>
+<th align="right">avg_part_sales</th>
+<th align="right">median_part_sales</th>
+<th align="right">avg_zero_share</th>
+<th align="right">series_size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">2509</td>
+<td align="right">0.51</td>
+<td align="right">0.39</td>
+<td align="right">0.75</td>
+<td align="right">51</td>
+</tr>
+</tbody>
+</table>
+<p>Given that the items are mostly slow moving, and the observations integer valued, we assume that the likelihood of each individual part’s sample could again be modeled by a Poisson likelihood:</p>
+<p><span class="math display">\[x_{i,t} \sim \text{Pois}(\lambda_i) \quad \forall i = 1, …, n.\]</span></p>
+<p>One important concern of retailers is the forecast of new products for which no sales have been observed yet. Assuming a level of similarity among products, an initial solution could be to take the average of all historical products’ means as the mean that parameterizes the new product’s Poisson distribution. Index the new product by <span class="math inline">\(j\)</span> such that: <span class="math inline">\(x_{j,t} \sim \text{Pois}(\lambda_j)\)</span> where we estimate <span class="math inline">\(\lambda_j\)</span> as <span class="math inline">\(\hat{\lambda}_j = \frac{1}{nT}\sum_{i=1}^{n} \sum_{t=1}^{T} x_{i,t}\)</span>.</p>
+<p>Using the <code>carparts</code> data, we get an estimate in which a new product is modeled by <span class="math inline">\(\hat{\lambda}_j = 0.43\)</span> – which is the average of all products’ sales averages.</p>
+<pre><code>## [1] 0.5073188</code></pre>
+<p>Given the characteristic properties of the Poisson distribution, new products would be modeled by a distribution with a variance that equals the mean:</p>
+<pre class="r"><code>pois_fixed &lt;- rpois(10000, new_product_lambda)
+round(var(pois_fixed),2)</code></pre>
+<pre><code>## [1] 0.52</code></pre>
+<p>The plot below shows the discrete distribution of the estimated Poisson distribution that we would use to forecast sales for new products given the historical sales of the entire product range.</p>
+<p><img src="/post/2018-01-04-understanding-the-negative-binomial-distribution_files/figure-html/unnamed-chunk-15-1.png" width="672" /></p>
+<p>This approach is neat and simple, but it sweeps the uncertainty in our estimate <span class="math inline">\(\hat{\lambda}_j\)</span> under the carpet: If we’d use the Poisson distribution parameterized by <span class="math inline">\(\hat{\lambda}_j\)</span> to give forecasts, our prediction intervals would be too narrow. Given that the estimate comes from a sample of data, it is not certain that the parameter should be a fixed value (0.43). It might as well be a little smaller or larger.</p>
+<p>To take this uncertainty in <span class="math inline">\(\hat{\lambda}_j\)</span> into account, we can treat <span class="math inline">\(\lambda_j\)</span> from now on as a random variable. We know that the parameter of a Poisson distribution should be non-negative, so a good candidate distribution for the random variable <span class="math inline">\(\lambda_j\)</span> is the <a href="https://en.wikipedia.org/wiki/Gamma_distribution">Gamma distribution</a>. One way of parameterizing a Gamma distribution is by shape <span class="math inline">\(k\)</span> and scale <span class="math inline">\(\theta\)</span> such that</p>
+<p><span class="math display">\[\lambda_j \sim \text{Gamma}(k, \theta).\]</span></p>
+<p>Consequently, we have <span class="math inline">\(E[\lambda_j] = k\theta\)</span> and <span class="math inline">\(Var[\lambda_j] = k\theta^2\)</span>.</p>
+<p>The Gamma distribution models the distribution of average sales of the range of products. Thus we first compute the average historical sales for each product, and then fit the distribution to these.</p>
+<pre class="r"><code>parts_summary &lt;- carparts_nona %&gt;%
+  as.data.frame %&gt;%
+  tbl_df %&gt;%
+  gather(part, sales) %&gt;%
+  group_by(part) %&gt;%
+  summarize(
+    avg_sales = mean(sales),
+    zero_share = mean(sales == 0),
+    size = n()
+  )
+
+parts_summary %&gt;% top_n(2,avg_sales)</code></pre>
+<pre><code>## # A tibble: 4 x 4
+##       part avg_sales zero_share  size
+##      &lt;chr&gt;     &lt;dbl&gt;      &lt;dbl&gt; &lt;int&gt;
+## 1 21017605  1.745098  0.3137255    51
+## 2 21055552  1.745098  0.5098039    51
+## 3 21311629  1.745098  0.2941176    51
+## 4 21311636  1.745098  0.2941176    51</code></pre>
+<p>Then we again use the <code>gamlss</code> package to fit the Gamma distribution to the sample means, and tidy the model output using the <code>broom</code> package:</p>
+<pre class="r"><code>gamma_fit &lt;- gamlss(avg_sales~1,
+                    data = parts_summary,
+                    family = GA(mu.link = &quot;identity&quot;,
+                                sigma.link = &quot;identity&quot;),
+                    control = gamlss.control(trace = FALSE)) %&gt;%
+  tidy()
+
+gamma_fit %&gt;% 
+  dplyr::select(parameter, estimate, std.error, p.value) %&gt;%
+  knitr::kable(digits = 2)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">parameter</th>
+<th align="right">estimate</th>
+<th align="right">std.error</th>
+<th align="right">p.value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">mu</td>
+<td align="right">0.51</td>
+<td align="right">0.01</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">sigma</td>
+<td align="right">0.85</td>
+<td align="right">0.01</td>
+<td align="right">0</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>gamma_theta &lt;- gamma_fit$estimate[1]
+gamma_k &lt;- gamma_fit$estimate[2]
+
+mean(rgamma(1000, scale = gamma_theta,
+            shape = gamma_k))</code></pre>
+<pre><code>## [1] 0.4504594</code></pre>
+<p>The parameters of the Gamma distribution were estimated above through Empirical Bayes as <span class="math inline">\(\hat{\theta} = 0.507\)</span> and <span class="math inline">\(\hat{k} = 0.85\)</span>.</p>
+<p>Thus we estimated a Gamma distribution for the parameter of the new product with <span class="math inline">\(\hat{\theta} = 0.507\)</span> and <span class="math inline">\(\hat{k} = 0.85\)</span>. The mean of the fitted Gamma distribution equals <span class="math inline">\(\hat{\theta} \cdot \hat{k} = 0.43\)</span> which does not come as a surprise as we already computed the global average sales to be 0.43.</p>
+<p>As we did before when we fitted the Poisson and the Negative Binomial distributions, we can check the fitted Gamma distribution visually. The fit is not ideal, which is likely because overly many products were sold very rarely.</p>
+<p><img src="/post/2018-01-04-understanding-the-negative-binomial-distribution_files/figure-html/unnamed-chunk-18-1.png" width="672" /></p>
+<hr />
+<p>With the fitted Gamma distribution at hand, we are now able to again use the Poisson distribution to simulate future sales of a new product. Previously, we would have drawn a random sample from a <span class="math inline">\(\text{Pois}(0.43)\)</span> distribution. Now, however, the parameter of the Poisson distribution itself comes from a distribution. Thus, to simulate a future sales number, we first draw a value <span class="math inline">\(\lambda_{new}\)</span> from the fitted Gamma distribution. This random value we then use as parameter in the Poisson distribution to generate a forecast simulation <span class="math inline">\(x_{new} \sim \text{Pois}(\lambda_{new})\)</span>.</p>
+<p>That is, the simulated sales are a mix of a Poisson and a Gamma distribution—they are no longer generated by a Poisson, but by a Poisson-Gamma mixture distribution.</p>
+<p>To highlight the difference between the Poisson distribution and the Poisson-Gamma mixture distribution, I animated the process of simulating sales from the mixture. In the plot below, the 10000 values are randomly drawn from the mixture, where first the Gamma value is drawn as indicated by the color scale. The Gamma value is plugged into the Poisson distribution and the resulting value falls on the x-axis. The result is again a discrete distribution.<a href="#fn1" class="footnoteRef" id="fnref1"><sup>1</sup></a></p>
+<pre class="r"><code>set.seed(1024)
+# simulate the parameter for the Poisson distribution,
+# which are then also used for the color scale
+alpha_values &lt;- rgamma(10000, 
+                       scale = gamma_theta,
+                       shape = gamma_k)
+random_poissons &lt;- rpois(10000, alpha_values)</code></pre>
+<p><img src="/post/2018-01-04-understanding-the-negative-binomial-distribution_files/figure-html/nbin_animation.gif" width="672" /></p>
+<pre class="r"><code>round(mean(random_poissons),2)</code></pre>
+<pre><code>## [1] 0.43</code></pre>
+<pre class="r"><code>round(var(random_poissons),2)</code></pre>
+<pre><code>## [1] 0.63</code></pre>
+<p>Comparing this distribution with the previous Poisson distribution, we see that the mixture is wider, has a little longer tails. The mean of both distributions is the same, 0.43, given the overall average historical sales. However, while the Poisson has a variance of 0.43, the Poisson-Gamma mixture has a larger variance of 0.63. The variance of a mixture is larger than the variance of the fixed distribution.</p>
+<p>It is now clear why the Negative Binomial distribution has a larger variance than the Poisson distribution: The Negative Binomial is identical to a Poisson-Gamma mixture.</p>
+<p>Given a <span class="math inline">\(\text{Gamma}(\theta, k)\)</span> distribution used to create a mixture, the resulting mixture is a <span class="math inline">\(\text{NB}(r,p)\)</span> negative binomial distribution, where <span class="math inline">\(r = k\)</span> and <span class="math inline">\(p = \frac{\theta}{\theta+1}\)</span>. We can check whether the mixture really is a Negative Binomial by comparing the theoretical mean and variance to the sample mean and sample variance:</p>
+<pre class="r"><code>r &lt;- gamma_k
+p &lt;- gamma_theta/(1+gamma_theta)
+
+# theoretical mean and variance of the Negative Binomial
+mu &lt;- p*r/(1-p)
+sigma &lt;- mu + mu^2/r
+
+round(mu,2)</code></pre>
+<pre><code>## [1] 0.43</code></pre>
+<pre class="r"><code>round(sigma,2)</code></pre>
+<pre><code>## [1] 0.65</code></pre>
+<p>We come very close to the 0.43 and 0.63 from the sample.</p>
+<p>By writing the variance of the negative binomial in terms of its mean, <span class="math inline">\(\sigma^2 = \mu + \frac{\mu^2}{r}\)</span>, it is obvious how much additional variance is added on top of the original Poisson variance. And given the derivation of the Poisson-Gamma mixture, it is clear that the additional variance in the Negative Binomial stems from the estimation of the Poisson parameter. Given that, it makes sense to immediately model the sales of a new product by fitting a Negative Binomial instead of a Poisson to the historical sales.<a href="#fn2" class="footnoteRef" id="fnref2"><sup>2</sup></a></p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>For a more mathematical derivation of the Negative Binomial as Poisson-Gamma mixture, check out the <a href="https://probabilityandstats.wordpress.com/tag/poisson-gamma-mixture/">blog post by Daniel Ma</a>.</p>
+<p>The general idea and format (and the headline!) for this post come from David Robinson’s awesome post on <a href="http://varianceexplained.org/r/empirical_bayes_baseball/">Understanding Empirical Bayes Estimation (Using Baseball Statistics)</a>. Just as he continued with a series of blog posts, I hope to write more on the Negative Binomial as conjugate prior, Gamma regression, and eventually LSTMs with Negative Binomial output.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>The animation is meant to be reminiscient of a <a href="https://en.wikipedia.org/wiki/Bean_machine">Galton Board</a>.<a href="#fnref1">↩</a></p></li>
+<li id="fn2"><p>This only holds if the historical products are each successfully modeled by a Poisson distribution.<a href="#fnref2">↩</a></p></li>
+</ol>
+</div>

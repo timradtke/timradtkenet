@@ -1,0 +1,15 @@
+base
+knitr
+ggplot2
+dplyr
+broom
+gamlss.data
+MASS
+gamlss.dist
+nlme
+gamlss
+forecast
+expsmooth
+tidyr
+animation
+gganimate

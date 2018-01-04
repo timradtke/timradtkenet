@@ -1,0 +1,420 @@
+---
+title: Understanding the Negative Binomial Distribution
+author: Tim Radtke
+date: '2018-01-04'
+slug: understanding-the-negative-binomial-distribution
+categories:
+  - Statistics
+tags:
+  - time series
+  - sales
+---
+
+If you've ever encountered count data, chances are you're familiar with the [Poisson distribution](https://en.wikipedia.org/wiki/Poisson_distribution). The Poisson distribution models the probability with which an event occurs a certain number of times within a fixed time period. For example, count how often a book is sold on Amazon on a given day. Then the Poisson can describe the probability with which the book is sold at least two times. Furthermore, the book might sell 5 times on some days; but it is never sold -3 times or 0.5 times; the Poisson distribution only allocates probability to non-negative integers--count data.
+
+Consider again the number of times an item is sold on Amazon on a given day. Then a sample of observations over a span of a few days could look like this:
+
+```{r, echo = FALSE}
+library(knitr)
+opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+product_data <- data.frame(
+  sales = c(3,1,9,3,1,3,11,0,1,6,0,3,3,1,2,1,6,5,5,8,2,2,7,8,2,2,9,9,1,10,6,5,5,2,2,4,4,5,5,3,2,10,3,4,9,8,3,3,4,0,5,3,7,4,3,5,4,4,3,14,0,3,4,2,7,7,5,4,5,5,8,2,3,8,0,4,6),
+  date = seq(from = as.Date("2017-10-20"), length.out = 77, by = 1)
+  )
+
+library(ggplot2)
+library(dplyr)
+
+product_data %>%
+  ggplot() +
+  geom_line(aes(x = date, y = sales)) +
+  labs(x = "Day", y = "Sales",
+       title = "Daily Sales Data")
+
+sales_only <- product_data$sales
+```
+
+One of the advantages of the Poisson distribution is that it is defined by a single parameter $\lambda$. Furthermore, the [distribution's mean equals](https://en.wikipedia.org/wiki/Poisson_distribution#Descriptive_statistics) $\lambda$, such that $\lambda$ can be estimated by method-of-moments and maximum likelihood alike: Given a sample, our best estimate is the sample mean, such that $\hat{\lambda}=\bar{x}$. Consequently, we can fit a Poisson to our example data like so (here, we take the high route with the `gamlss` package):
+
+```{r, echo = TRUE, warning = FALSE, message = FALSE}
+library(broom)
+library(gamlss)
+
+# a complicated way of computing the sample mean:
+pois_fit <- gamlss(sales_only~1, 
+                   family = PO(mu.link = "identity"),
+                   control = gamlss.control(trace = FALSE)) 
+pois_fit_tidy <- tidy(pois_fit)
+round(pois_fit_tidy[,c(3:4,6)],2)
+
+# Check whether we indeed estimated the sample mean
+identical(round(pois_fit_tidy$estimate,2),
+          round(mean(sales_only),2))
+```
+
+```{r, echo = FALSE, fig.cap="Comparison of Sample and Theoretical Poisson Distribution."}
+# Plot the density of the sample distribution, and one
+# based on random draws from the fitted Poisson
+product_wPois <- product_data %>%
+  mutate(distribution = "Sample") %>%
+  dplyr::select(distribution, sales) %>%
+  rbind.data.frame(
+    data.frame(distribution = "Poisson",
+               sales = rpois(500, 
+                             pois_fit$estimate)))
+
+#ggplot(product_wPois, aes(x = sales, group = distribution,
+#             color = distribution)) +
+#  geom_density(stat = "density") +
+#  labs(x = "Sales", y = "Density",
+#  title = "") +
+#  coord_cartesian(xlim = c(0,17)) +
+#  theme(legend.position = "bottom")
+
+#product_wPois %>%
+#  ggplot() +
+#  geom_histogram(aes(x = sales,
+#               group = distribution,
+#               fill = distribution),
+#           stat = "density",
+#           position = "dodge")
+
+product_wPois %>%
+  ggplot() +
+  geom_histogram(aes(x = sales,
+                     y = ..density..,
+               group = distribution,
+               fill = distribution),
+           bins = 10, position = "dodge") +
+  labs(x = "Sales", y = "Density") +
+  coord_cartesian(xlim = c(0,17)) +
+  scale_fill_discrete(name = "Distribution") +
+  theme(legend.position = "bottom")
+```
+
+This worked flawlessly. But if we evaluate the fit graphically, it’s a little disappointing. The sample distribution has much more probability in the tails of the distribution. Consequently, if we simulated new data from the fitted distribution, the simulated sample would have the correct mean, but too tight lower and upper quantiles:
+
+```{r}
+set.seed(1024)
+summary(product_data$sales)
+pois_sample <- rpois(83, pois_fit_tidy$estimate)
+summary(pois_sample)
+```
+
+What we failed to take into account so far is the variance of our sample: One fundamental assumption of the Poisson distribution is that both mean and variance are equal. Thus, if the random variable $X$ is Poisson distributed with parameter $\lambda$, $X \sim \text{Pois}(\lambda)$, then $E[X] = Var[X] = \lambda$. This is an assumption that holds at best approximately in applications. In the data set we used so far, we actually have a variance that is nearly twice as large as the mean:
+
+```{r}
+round(mean(product_data$sales),2)
+round(var(product_data$sales),2)
+```
+
+This case, where the sample variance is larger than the sample mean, occurs much more frequently. So if we fit a Poisson using the sample mean, we will end up with a fitted distribution whose variance is smaller than the one observed in the data. In the context of Poisson distributions we say that our sample is overdispersed: We expect a sample variance $\hat{\sigma}^2 = \lambda$ but get $\hat{\sigma}^2 > \lambda$. The sample is more "dispersed" than the fitted distribution.
+
+## An Alternative Distribution
+
+A distribution for count data that takes overdispersion into account is the Negative Binomial distribution. 
+
+In contrast to the Poisson distribution, the Negative Binomial takes two parameters, and there are many different parameterizations which one can choose from. [On Wikipedia](https://en.wikipedia.org/wiki/Negative_binomial_distribution) we have a parameterization in terms of $r$ and $p$:
+
+>Suppose there is a sequence of independent Bernoulli trials. Thus, each trial has two potential outcomes called "success" and "failure". In each trial the probability of success is $p$ and of failure is $(1 − p)$. We are observing this sequence until a predefined number $r$ of failures has occurred. Then the random number of successes we have seen, $X$, will have the negative binomial distribution:
+
+$$
+X \sim \text{NB}(r,p)
+$$
+
+Then, the mean is defined as $\mu = E[X] = \frac{pr}{1-p}$. Using this formulation, [one can write](https://en.wikipedia.org/wiki/Negative_binomial_distribution#Alternative_formulations) the variance as $\sigma^2 = Var(X) = \frac{pr}{(1-p)^2} = \mu + \frac{\mu^2}{r}$. This way, it becomes obvious that the variance of a Negative Binomial is larger than that of a Poisson. Given that both distributions have a mean equal to $\lambda$, the Negative Binomial has an additional variance of $\lambda^2/r$. The Negative Binomial will always have longer tails. Only in the special case of $r = \infty$, when the Negative Binomial reduces to the Poisson, the variances will be the same.
+
+Now, are we able to improve upon our previous fit by using a Negative Binomial? We use the `gamlss` package as previously and compare the fitted density with our previous results.
+
+```{r, warning = FALSE, message = FALSE, eval = FALSE}
+nbin_fit <- gamlss(sales_only~1, 
+                   family = NBI(mu.link = "identity",
+                                sigma.link = "identity"))
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+nbin_fit <- gamlss(sales_only~1, 
+                   family = NBI(mu.link = "identity", 
+                                sigma.link = "identity"), 
+                   control = gamlss.control(trace = FALSE))
+```
+
+```{r}
+nbin_fit_tidy <- tidy(nbin_fit)
+nbin_fit_tidy[,c(1,3:4,6)] %>%
+  knitr::kable(digits = 2)
+```
+
+```{r, echo = FALSE, fig.cap = "Comparison of sample distribution with fitted theortical distributions. Even though the distributions are discrete, we use densities to make the comparison easier."}
+product_wPoisNbin <- product_wPois %>%
+  rbind.data.frame(
+    data.frame(distribution = "NegBin",
+               sales = rNBI(500, 
+                            mu = nbin_fit_tidy$estimate[1], 
+                            sigma = nbin_fit_tidy$estimate[2])))
+
+ggplot(product_wPoisNbin, 
+       aes(x = sales, group = distribution,
+           color = distribution)) +
+  geom_density(stat = "density") +
+  xlab("Sales") + ylab("Density") +
+  coord_cartesian(xlim = c(0,17)) +
+  scale_color_discrete(name = "Distribution") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+AIC(pois_fit)
+AIC(nbin_fit)
+```
+
+The graph shows that using a Negative Binomial instead of a Poisson distribution improves a lot upon the previous fit. The AIC has decreased as well compared to the fit of the Poisson distribution. There is now more probability in the tails and less around 4 to 5. We seem to have successfully taken into account the additional variance in our sample.
+
+Why does the Negative Binomial take the variance into account differently? Or: Why does the Negative Binomial have a second parameter (while the Poisson has just one)? 
+
+## The Negative Binomial as Poisson-Gamma-Mixture
+
+To answer these questions, and to better understand the Negative Binomial distribution ([Roll Credits!](https://youtu.be/jTyV-M_AY4M?t=4m27s)), suppose you have not just one, but a whole bunch of products, $i = 1, ..., N$. As an example, consider the `carparts` data set published with "Forecasting with exponential smoothing: the state space approach" by Hyndman, Koehler, Ord and Snyder (Springer, 2008). The data set comes with the `expsmooth` package in R. It consists of 2674 time series describing monthly sales of different car parts. The majority of the series has 51 observations. We can summarize the complete series quickly:
+
+```{r, message=FALSE,warning=FALSE, echo = FALSE}
+library(expsmooth)
+library(tidyr)
+
+carparts_nona <- carparts[,!apply(carparts, 2, anyNA)]
+carparts_na <- carparts[,apply(carparts, 2, anyNA)]
+carparts_nona %>%
+  as.data.frame %>%
+  tbl_df %>%
+  gather(part, sales) %>%
+  group_by(part) %>%
+  summarize(
+    avg_sales = mean(sales),
+    zero_share = mean(sales == 0),
+    size = n()
+  ) %>% ungroup %>% 
+  summarize(
+    n_series = n(),
+    avg_part_sales = mean(avg_sales),
+    median_part_sales = median(avg_sales),
+    avg_zero_share = mean(zero_share),
+    series_size = max(size)
+  ) %>% round(2) %>%
+  knitr::kable()
+```
+
+Given that the items are mostly slow moving, and the observations integer valued, we assume that the likelihood of each individual part's sample could again be modeled by a Poisson likelihood:
+
+$$x_{i,t} \sim \text{Pois}(\lambda_i) \quad \forall i = 1, …, n.$$
+
+One important concern of retailers is the forecast of new products for which no sales have been observed yet. Assuming a level of similarity among products, an initial solution could be to take the average of all historical products’ means as the mean that parameterizes the new product’s Poisson distribution. Index the new product by $j$ such that: $x_{j,t} \sim \text{Pois}(\lambda_j)$ where we estimate $\lambda_j$ as $\hat{\lambda}_j = \frac{1}{nT}\sum_{i=1}^{n} \sum_{t=1}^{T} x_{i,t}$.
+
+Using the `carparts` data, we get an estimate in which a new product is modeled by $\hat{\lambda}_j = 0.43$ -- which is the average of all products' sales averages.
+
+```{r, message=FALSE,warning=FALSE, echo = FALSE}
+carparts_nona_gathered <- carparts_nona %>%
+  tbl_df() %>%
+  gather(part, sales)
+  
+(new_product_lambda <- mean(carparts_nona_gathered$sales))
+```
+
+Given the characteristic properties of the Poisson distribution, new products would be modeled by a distribution with a variance that equals the mean:
+
+```{r}
+pois_fixed <- rpois(10000, new_product_lambda)
+round(var(pois_fixed),2)
+```
+
+The plot below shows the discrete distribution of the estimated Poisson distribution that we would use to forecast sales for new products given the historical sales of the entire product range.
+
+```{r, echo = FALSE}
+pois_fixed_df <- data.frame(x = pois_fixed) 
+pois_fixed_count <- pois_fixed_df %>%
+  group_by(x) %>%
+  summarize(n = n()) %>%
+  ungroup
+
+pois_fixed_df %>% 
+  left_join(pois_fixed_count) %>%
+  mutate(y = runif(10000, 0, n)) %>%
+  ggplot(aes(x = pois_fixed, y = y)) +
+  geom_jitter(width = 0.25, size = 0.3) +
+  coord_cartesian(xlim = c(0,8), ylim = c(0,7000)) +
+  labs(y = "Count", x = "Sales",
+       title = "Poisson Distribution with Fixed Mean",
+       subtitle = "Distribution of 10000 random samples drawn from Pois(0.43).")
+```
+
+This approach is neat and simple, but it sweeps the uncertainty in our estimate $\hat{\lambda}_j$ under the carpet: If we’d use the Poisson distribution parameterized by $\hat{\lambda}_j$ to give forecasts, our prediction intervals would be too narrow. Given that the estimate comes from a sample of data, it is not certain that the parameter should be a fixed value (0.43). It might as well be a little smaller or larger.
+
+To take this uncertainty in $\hat{\lambda}_j$ into account, we can treat $\lambda_j$ from now on as a random variable. We know that the parameter of a Poisson distribution should be non-negative, so a good candidate distribution for the random variable $\lambda_j$ is the [Gamma distribution](https://en.wikipedia.org/wiki/Gamma_distribution). One way of parameterizing a Gamma distribution is by shape $k$ and scale $\theta$ such that
+
+$$\lambda_j \sim \text{Gamma}(k, \theta).$$ 
+
+Consequently, we have $E[\lambda_j] = k\theta$ and $Var[\lambda_j] = k\theta^2$.
+
+The Gamma distribution models the distribution of average sales of the range of products. Thus we first compute the average historical sales for each product, and then fit the distribution to these.
+
+```{r}
+parts_summary <- carparts_nona %>%
+  as.data.frame %>%
+  tbl_df %>%
+  gather(part, sales) %>%
+  group_by(part) %>%
+  summarize(
+    avg_sales = mean(sales),
+    zero_share = mean(sales == 0),
+    size = n()
+  )
+
+parts_summary %>% top_n(2,avg_sales)
+```
+
+Then we again use the `gamlss` package to fit the Gamma distribution to the sample means, and tidy the model output using the `broom` package:
+
+```{r, message = FALSE, warning = FALSE}
+
+gamma_fit <- gamlss(avg_sales~1,
+                    data = parts_summary,
+                    family = GA(mu.link = "identity",
+                                sigma.link = "identity"),
+                    control = gamlss.control(trace = FALSE)) %>%
+  tidy()
+
+gamma_fit %>% 
+  dplyr::select(parameter, estimate, std.error, p.value) %>%
+  knitr::kable(digits = 2)
+  
+gamma_theta <- gamma_fit$estimate[1]
+gamma_k <- gamma_fit$estimate[2]
+
+mean(rgamma(1000, scale = gamma_theta,
+            shape = gamma_k))
+```
+
+The parameters of the Gamma distribution were estimated above through Empirical Bayes as $\hat{\theta} = 0.507$ and $\hat{k} = 0.85$.
+
+Thus we estimated a Gamma distribution for the parameter of the new product with $\hat{\theta} = 0.507$ and $\hat{k} = 0.85$. The mean of the fitted Gamma distribution equals $\hat{\theta} \cdot \hat{k} = 0.43$ which does not come as a surprise as we already computed the global average sales to be 0.43.
+
+As we did before when we fitted the Poisson and the Negative Binomial distributions, we can check the fitted Gamma distribution visually. The fit is not ideal, which is likely because overly many products were sold very rarely.
+
+```{r, echo = FALSE}
+gamma_dists <- data.frame(
+  distribution = c(rep("Sample", 2509), rep("Gamma", 2509)),
+  sales_average = c(parts_summary$avg_sales,
+                    rGA(2509, gamma_fit$estimate[1],
+                        gamma_fit$estimate[2]))
+)
+
+gamma_dists %>%
+  ggplot() +
+  geom_density(aes(x = sales_average,
+                   color = distribution, group = distribution)) +
+  theme(legend.position = "bottom")
+```
+
+***
+
+With the fitted Gamma distribution at hand, we are now able to again use the Poisson distribution to simulate future sales of a new product. Previously, we   would have drawn a random sample from a $\text{Pois}(0.43)$ distribution. Now, however, the parameter of the Poisson distribution itself comes from a distribution. Thus, to simulate a future sales number, we first draw a value $\lambda_{new}$ from the fitted Gamma distribution. This random value we then use as parameter in the Poisson distribution to generate a forecast simulation $x_{new} \sim \text{Pois}(\lambda_{new})$.
+
+That is, the simulated sales are a mix of a Poisson and a Gamma distribution—they are no longer generated by a Poisson, but by a Poisson-Gamma mixture distribution. 
+
+To highlight the difference between the Poisson distribution and the Poisson-Gamma mixture distribution, I animated the process of simulating sales from the mixture. In the plot below, the 10000 values are randomly drawn from the mixture, where first the Gamma value is drawn as indicated by the color scale. The Gamma value is plugged into the Poisson distribution and the resulting value falls on the x-axis. The result is again a discrete distribution.^[The animation is meant to be reminiscient of a [Galton Board](https://en.wikipedia.org/wiki/Bean_machine).]
+
+```{r}
+set.seed(1024)
+# simulate the parameter for the Poisson distribution,
+# which are then also used for the color scale
+alpha_values <- rgamma(10000, 
+                       scale = gamma_theta,
+                       shape = gamma_k)
+random_poissons <- rpois(10000, alpha_values)
+```
+
+```{r, echo = FALSE}
+# Use the amazing `gganimate` package by David Robinson
+# https://github.com/dgrtwo/gganimate/blob/master/README.Rmd
+
+library(animation)
+ani.options(autobrowse = FALSE, interval = 0.2)
+
+# https://github.com/rbind/blogdown-demo/issues/12
+# opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r nbin_animation, echo = FALSE, fig.show = "animate", ffmpeg.format='gif', dev='jpeg', interval = 0.2}
+pois_count <- data.frame(x = random_poissons) %>%
+  group_by(x) %>%
+  summarize(n = n(),
+            freq = n/10000)
+
+data_points <- data.frame(x = random_poissons,
+                          alpha_values = alpha_values,
+              incoming_order = rep(1:100, each = 100)) %>%
+  left_join(pois_count) %>%
+  mutate(y = runif(10000, 0, freq))
+
+left_half <- data_points %>% 
+  dplyr::select(x, y, alpha_values) %>% 
+  group_by(x) %>% 
+  arrange(x,y)
+right_half <- data_points %>% 
+  dplyr::select(x, incoming_order) %>% 
+  group_by(x) %>% 
+  arrange(x,incoming_order)
+data_points_ordered <- cbind.data.frame(left_half, right_half[,2])
+
+library(gganimate)
+
+plot_animated <- ggplot(data_points_ordered,
+                         aes(x = x, y = y*10000,
+                             color = alpha_values,
+                             frame = incoming_order)) +
+   geom_jitter(aes(cumulative = TRUE, alpha = alpha_values+0.3),
+               size = 0.3, width = 0.3) +
+   #theme(legend.position = "none") +
+   labs(x = "Sales", y = "Count",
+        title = "Random Samples from Poisson-Gamma Mixture",
+        subtitle = "Color indicates the Poisson distribution that created the sample.") + 
+  scale_color_gradientn(colors = rainbow(8),
+                        name = "lambda") +
+    scale_alpha(guide = FALSE)
+
+gganimate(plot_animated, title_frame = FALSE)
+```
+
+```{r}
+round(mean(random_poissons),2)
+round(var(random_poissons),2)
+```
+
+Comparing this distribution with the previous Poisson distribution, we see that the mixture is wider, has a little longer tails. The mean of both distributions is the same, 0.43, given the overall average historical sales. However, while the Poisson has a variance of 0.43, the Poisson-Gamma mixture has a larger variance of 0.63. The variance of a mixture is larger than the variance of the fixed distribution.
+
+It is now clear why the Negative Binomial distribution has a larger variance than the Poisson distribution: The Negative Binomial is identical to a Poisson-Gamma mixture.
+
+Given a $\text{Gamma}(\theta, k)$ distribution used to create a mixture, the resulting mixture is a $\text{NB}(r,p)$ negative binomial distribution, where $r = k$ and $p = \frac{\theta}{\theta+1}$. We can check whether the mixture really is a Negative Binomial by comparing the theoretical mean and variance to the sample mean and sample variance:
+
+```{r}
+r <- gamma_k
+p <- gamma_theta/(1+gamma_theta)
+
+# theoretical mean and variance of the Negative Binomial
+mu <- p*r/(1-p)
+sigma <- mu + mu^2/r
+
+round(mu,2)
+round(sigma,2)
+```
+
+We come very close to the 0.43 and 0.63 from the sample.
+
+By writing the variance of the negative binomial in terms of its mean, $\sigma^2 = \mu + \frac{\mu^2}{r}$, it is obvious how much additional variance is added on top of the original Poisson variance. And given the derivation of the Poisson-Gamma mixture, it is clear that the additional variance in the Negative Binomial stems from the estimation of the Poisson parameter. Given that, it makes sense to immediately model the sales of a new product by fitting a Negative Binomial instead of a Poisson to the historical sales.^[This only holds if the historical products are each successfully modeled by a Poisson distribution.]
+
+## References
+
+For a more mathematical derivation of the Negative Binomial as Poisson-Gamma mixture, check out the [blog post by Daniel Ma](https://probabilityandstats.wordpress.com/tag/poisson-gamma-mixture/).
+
+The general idea and format (and the headline!) for this post come from David Robinson’s awesome post on [Understanding Empirical Bayes Estimation (Using Baseball Statistics)](http://varianceexplained.org/r/empirical_bayes_baseball/). Just as he continued with a series of blog posts, I hope to write more on the Negative Binomial as conjugate prior, Gamma regression, and eventually LSTMs with Negative Binomial output.
