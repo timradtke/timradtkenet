@@ -2,10 +2,12 @@
 title: About Minimize Regret
 ---
 
-**Minimize Regret** is a blog written by me, Tim Radtke. I live in Berlin, where I work as data scientist at the lovetoy online shop [Amorelie](https://amorelie.de) (NSFW, I suppose); contact me for a coupon code :heart_eyes:. To answer your question: No, not everyone at Amorelie is a product tester. Instead, I'm tasked with things like forecasting the demand for lube during Christmas and New Year's Eve.
+Hi, my name is Tim. You’re reading **Minimize Regret**, the site where I write about things I’ve recently learned.
 
-I recently finished my master's in statistics and graduated with honors. My master's thesis on multi-armed bandits was supervised by Alexandra Carpentier and Marius Kloft. 
+I live in Berlin, where I work as a data scientist. I’m interested in quantifying uncertainty, and optimal decision making under uncertainty. Fittingly, topics such as probabilistic programming, reinforcement learning and stochastic optimal control, as well as time series theory and applications are near and dear to my heart.
 
-Speaking of multi-armed bandits, the name of this site comes from a conversation with my colleague Carlo: One can test different variations of a website using bandit algorithms to find the best performing one. When serving variations to users of the website, the algorithm tries to minimize its cumulative regret from not displaying the website with the best conversion rate, for example. Thus, the winning website variation minimizes the regret. Carlo concluded: **Winners minimize regret**.
+I recently finished my master’s in statistics and graduated with honors. My thesis on multi-armed bandits was supervised by [Alexandra Carpentier](https://sites.google.com/site/alexandracarpentierresearch/) and [Marius Kloft](http://ml.informatik.uni-kl.de).
 
-Send me an email to `tim@timradtke.net` in case you have any question. I'm also happy about everyone who says hi. Else, try [Twitter](https://www.twitter.com/timradtke) or [Linkedin](https://www.linkedin.com/in/timradtke). Or even better, meet me at the next [Berlin Machine Learning](https://www.meetup.com/berlin-machine-learning/) meetup.
+Before joining [Bayer](https://www.bayer.com) as a data scientist in November 2018, I worked as data scientist for the online shop [Amorelie](https://amorelie.de) (NSFW, I suppose). At Amorelie, I was responsible for the automated forecast and optimal replenishment of thousands of products, and introduced novel ways of attributing TV marketing cost.
+
+Send me an email to `tim@timradtke.net` in case you have any question. Else, try [Twitter](https://www.twitter.com/timradtke) or [Linkedin](https://www.linkedin.com/in/timradtke). Or even better, meet me at the next [Berlin Machine Learning](https://www.meetup.com/berlin-machine-learning/)  or [Stan User Group](https://www.meetup.com/Stan-User-Group-Berlin/) meetup.
