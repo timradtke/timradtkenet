@@ -36,4 +36,4 @@ enableEmoji = true
 
 [params]
     description = "Minimize Regret is a blog written by Tim Radtke about data science and machine learning."
-    footer = "&copy; Tim Radtke 2018 | [Github](https://www.github.com/timradtke) | [Twitter](https://www.twitter.com/timradtke)"
+    footer = "&copy; Tim Radtke 2019 | [Github](https://www.github.com/timradtke) | [Twitter](https://www.twitter.com/timradtke)"
