@@ -11,7 +11,7 @@ body {
 }
 a {color: #EF3737 /*#2B00F7*/;}
     
-    a.list {color: #3358D5; text-decoration: none;}
+a.list {color: #3358D5; text-decoration: none;}
         
         /* header and footer areas */
         .menu { margin: 0.6em 0; padding: 0; display: inline-block; }
@@ -32,17 +32,21 @@ a {color: #EF3737 /*#2B00F7*/;}
         display: inline-block; 
         padding-right: 0.6em;
         padding-bottom: 0;
-        margin-bottom: 0;}
+        margin-bottom: 0;
+      }
       h1.page-title a {
         text-decoration: none;
         color: #000;
-          font-size: 26px;
+        font-size: 26px;
         /*color: #2B00F7;*/
-          /*border-bottom: 0.1em solid #FE2900;*/
+        /*border-bottom: 0.1em solid #FE2900;*/
       }
       .article-meta, footer { text-align: center; }
       
-      .title { font-size: 1em; line-height: 1em;}
+      .title { 
+        font-size: 1em; 
+        line-height: 1.1em;
+      }
       .subtitle { 
         margin: 0;
         padding: 0;
