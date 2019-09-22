@@ -23,12 +23,12 @@ enableEmoji = true
     url = "/about/"
     weight = 2
 [[menu.main]]
-    name = "Twitter"
-    url = "https://www.twitter.com/timradtke"
+    name = "Posts"
+    url = "/post/"
     weight = 3
 [[menu.main]]
-    name = "Email"
-    url = "mailto:tim@timradtke.net?subject=%F0%9F%91%8B%20Hi%20Tim!&body=Hey%20Tim!%20I%20clearly%20clicked%20this%20link%20from%20your%20website.%20I%20wanted%20to%20say%20hi%20because..."
+    name = "Twitter"
+    url = "https://www.twitter.com/timradtke"
     weight = 4
 [[menu.main]]
     name = "RSS"
