@@ -23,8 +23,8 @@ enableEmoji = true
     url = "/about/"
     weight = 2
 [[menu.main]]
-    name = "Posts"
-    url = "/post/"
+    name = "Contact"
+    url = "mailto:tim@timradtke.net?subject=Hi%20from%20minimizeregret.com"
     weight = 3
 [[menu.main]]
     name = "Twitter"
@@ -38,4 +38,4 @@ enableEmoji = true
     author = "Tim Radtke"
     dateFormat = "2006-01-02"
     description = "Minimize Regret is a blog written by Tim Radtke about data science and machine learning."
-    footer = "&copy; Tim Radtke 2019 | [Github](https://www.github.com/timradtke) | [Twitter](https://www.twitter.com/timradtke)"
+    footer = "&copy; Tim Radtke 2020 | [Github](https://www.github.com/timradtke) | [Twitter](https://www.twitter.com/timradtke)"

@@ -1,11 +1,18 @@
 {{ partial "header.html" . }}
-<div class="article-meta">
-<h1><span class="title">{{ .Title }}</span></h1>
-{{ if .Params.date }}<h2 class="date">{{ .Date.Format "January 2, 2006" }}</h2>{{ end }}
-</div>
 
 <main>
+<article>
+<div>
+<header>
+<h1>{{ .Title }}</h1>
+{{ if .Params.date }}<time>{{ .Date.Format "January 2, 2006" }}</time>{{ end }}
+</header>
+
+<div class="postbody">
 {{ .Content }}
+</div>
+</div>
+</article>
 </main>
 
 {{ partial "footer.html" . }}

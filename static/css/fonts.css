@@ -1,7 +1,7 @@
 body {
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: normal -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif
 }
 code {
-  font-family: Menlo, Monaco, monospace;
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, Courier, monospace;
   font-size: 85%;
 }

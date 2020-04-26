@@ -1,111 +1,142 @@
-head {
-  border-bottom: 5px solid #FFF8C8; 
+/*
+
+WELCOME TO THE PARTY, PAL.
+
+*/
+
+* {
+    box-sizing: border-box
+}
+
+html {
+    font: 16px / normal -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    color: #222;
+    -webkit-font-smoothing: antialiased
 }
 
 body {
-  max-width: 600px;
-  margin: auto;
-  padding: 1em;
-  line-height: 1.4em;
-  background: #f9f9f9;
-  
-  -webkit-font-smoothing: antialiased;
-  -webkit-text-size-adjust: 100%;
-  -webkit-appearance: none;
-     -moz-appearance: none;
+    margin: 0 auto;
+    padding: 2rem
 }
-a {color: #EF3737 /*#2B00F7*/;}
-    
-a.list {color: #3358D5; text-decoration: none;}
-        
-        /* header and footer areas */
-        .menu { margin: 0.6em 0; padding: 0; display: inline-block; }
-      .menu li { 
-        display: inline-block; 
-        padding-right: 1.2em;
-      }
-      .menu li a {
-        color: #3358D5;
-      }
-      .article-meta, .menu a {
-        text-decoration: none;
-        /*background: #fff;
-          padding: 0px;
-        border-radius: 5px;*/
-      }
-      
-      h1.page-title { 
-        display: inline-block; 
-        padding-right: 0.6em;
-        padding-bottom: 0;
-        margin-bottom: 0;
-      }
-      
-      h1.page-title a {
-        text-decoration: none;
-        color: #000;
-        font-size: 26px;
-        /*color: #2B00F7;*/
-        /*border-bottom: 0.1em solid #FE2900;*/
-      }
-      .article-meta, footer { text-align: center; }
-      
-      .title { 
-        font-size: 1em; 
-        line-height: 1.1em;
-      }
-      .subtitle { 
-        margin: 0;
-        padding: 0;
-        font-size: 1em;
-        display: inline-block; 
-      }
-      
-      footer a { text-decoration: none; color: #3358D5;}
-          hr {
-            border-style: dashed;
-            color: #EF3737 /*#FE2900*/;
-              margin: 0.6em 0;
-          }
-        
-        /* code */
-          pre {
-            border: 1px solid #000;
-            box-shadow: 5px 5px 5px #000;
-            padding: 1em;
-            overflow-x: auto;
-          }
-        code { background: #f9f9f9; }
-            pre code { background: none; }
+
+.container {
+    max-width: 40rem;
+    margin: 0 auto
+}
+
+h1, h2, h3, h4 {
+    font-weight: 600
+}
+
+a {
+    color: blue
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #EF3737;
+    margin: 2.5rem auto;
+    max-width: 50rem
+}
+
+small, time {
+    color: slategray
+}
+
+body a.logo {
+    color: black;
+    text-decoration: none;
+}
+
+body a.logo h1 {
+    margin-bottom: 0rem
+}
+
+body h3 a {
+    color: black;
+    text-decoration: none;
+}
+
+#read-this-first {
+    margin-bottom: -1rem;
+}
+
+body nav {
+    margin-bottom: 2rem
+}
+
+nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0
+}
+
+nav ul li {
+    display: inline-block;
+    margin-right: 0.5em
+}
+
+footer {
+    margin-top: 3rem
+}
+
+header time {
+    display: block;
+    margin: -1rem 0 1rem
+}
+
+pre {
+    font-family: "SFMono-Regular", Menlo, Monaco, Consolas, Courier, monospace;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    box-shadow: 5px 5px 5px #eee;
+    background: #f9f9f9 /*#f8f8f8*/;
+    color: #000;
+    padding: 1em;
+    overflow-x: auto;
+}
+
+code { 
+    background: #f9f9f9;
+}
+
+pre code {
+    background: none;
+}
+  
+img, iframe, video {
+    max-width: 100%;
+}
+
+main {
+    hyphens: auto;
+}
+
+blockquote {
+    background: #f9f9f9; 
+    border-left: 5px solid #2DCC9A;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    border-right: 1px solid #ddd;
+    padding: 3px 1em 3px;
+    margin-left: 0.5em;
+    margin-right: 1em;
+  }
           
-          /* misc elements */
-            img, iframe, video { max-width: 100%; }
-          main { hyphens: auto; }
-          blockquote {
-            background: #fff; /*#f9f9f9;*/
-            border-left: 5px solid #6085FF;
-            border-top: 1px solid #ddd;
-            border-bottom: 1px solid #ddd;
-            border-right: 1px solid #ddd;
-            padding: 3px 1em 3px;
-            margin-left: 0.5em;
-            margin-right: 1em;
-          }
-          
-          table {
-            margin: auto;
-            border-top: 1px solid #666;
-            border-bottom: 1px solid #666;
-          }
-          table thead th { border-bottom: 1px solid #ddd; }
-            th, td { padding: 5px; }
-            thead, tfoot, tr:nth-child(even) { background: #eee }
-                
-                pre {
-                  border: 1px solid #ddd;
-                  box-shadow: 5px 5px 5px #eee;
-                  background: #fff /*#f8f8f8*/;
-                    color: #000;
-                    padding: 1em;
-                  overflow-x: auto;
-                }
+table {
+    margin: auto;
+    border-top: 1px solid #666;
+    border-bottom: 1px solid #666;
+}
+table thead th { 
+    border-bottom: 1px solid #ddd; 
+}
+
+th, td {
+    padding: 5px; 
+}
+
+thead, tfoot, tr:nth-child(even) { 
+    background: #eee 
+}
