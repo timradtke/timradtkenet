@@ -23,8 +23,8 @@ enableEmoji = true
     url = "/about/"
     weight = 2
 [[menu.main]]
-    name = "Contact"
-    url = "mailto:tim@timradtke.net?subject=Hi%20from%20minimizeregret.com"
+    name = "Posts"
+    url = "/post/"
     weight = 3
 [[menu.main]]
     name = "Twitter"
