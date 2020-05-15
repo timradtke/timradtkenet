@@ -16,6 +16,7 @@ html {
 }
 
 body {
+    border-left: 5px solid #2DCC9A;
     margin: 0 auto;
     padding: 2rem
 }
