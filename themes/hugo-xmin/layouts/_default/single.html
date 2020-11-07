@@ -4,7 +4,7 @@
 <article>
 <div>
 <header>
-<h1>{{ .Title }}</h1>
+<h1>{{ .Title | markdownify }}</h1>
 {{ if .Params.date }}<time>{{ .Date.Format "January 2, 2006" }}</time>{{ end }}
 </header>
 
